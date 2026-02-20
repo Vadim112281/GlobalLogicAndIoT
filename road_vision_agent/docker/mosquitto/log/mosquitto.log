@@ -1,0 +1,17 @@
+1771617066: mosquitto version 2.1.2 starting
+1771617066: Config loaded from /mosquitto/config/mosquitto.conf.
+1771617066: Bridge support available.
+1771617066: Persistence support available.
+1771617066: TLS support available.
+1771617066: TLS-PSK support available.
+1771617066: Websockets support available.
+1771617066: Opening ipv4 listen socket on port 1883.
+1771617066: Opening ipv6 listen socket on port 1883.
+1771617066: mosquitto version 2.1.2 running
+1771617066: New connection from 172.19.0.3:55019 on port 1883.
+1771617066: New client connected from 172.19.0.3:55019 as auto-F909B6BE-ED74-3248-78E3-9F881CD1EEF7 (p4, c1, k60).
+1771617066: New connection from 192.168.65.1:53063 on port 1883.
+1771617066: New client connected from 192.168.65.1:53063 as mqtt-explorer-2006f4fc (p4, c1, k60).
+1771617138: Client mqtt-explorer-2006f4fc [192.168.65.1:53063] disconnected.
+1771617184: New connection from 192.168.65.1:60182 on port 1883.
+1771617184: New client connected from 192.168.65.1:60182 as mqtt-explorer-2006f4fc (p4, c1, k60).
