@@ -1,0 +1,67 @@
+name: road_vision_store
+
+services:
+  postgres_db:
+    image: postgres:16
+    container_name: road_vision_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: pass
+      POSTGRES_DB: test_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./db/structure.sql:/docker-entrypoint-initdb.d/01_structure.sql:ro
+    ports:
+      - "5433:5432"
+    networks:
+      - store_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d test_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: road_vision_pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+      PGADMIN_DEFAULT_PASSWORD: root
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    ports:
+      - "5050:80"
+    networks:
+      - store_net
+    depends_on:
+      postgres_db:
+        condition: service_healthy
+
+  store_api:
+    container_name: road_vision_store_api
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: pass
+      POSTGRES_DB: test_db
+      POSTGRES_HOST: postgres_db
+      POSTGRES_PORT: 5432
+    ports:
+      - "8000:8000"
+    networks:
+      - store_net
+    depends_on:
+      postgres_db:
+        condition: service_healthy
+
+networks:
+  store_net:
+
+volumes:
+  postgres_data:
+  pgadmin_data:
