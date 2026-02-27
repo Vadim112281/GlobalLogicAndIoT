@@ -1,0 +1,20 @@
+main.py
+config.py
+app
+  adapters
+    agent_mqtt_adapter.py
+    hub_http_adapter.py
+    hub_mqtt_adapter.py
+  entities
+    agent_data.py
+    processed_agent_data.py
+  interfaces
+    agent_gateway.py
+    hub_gateway.py
+  usecases
+    data_processing.py
+
+docker
+  docker-compose.yaml
+Dockerfile
+requirements.txt
