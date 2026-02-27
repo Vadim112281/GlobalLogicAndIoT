@@ -1,0 +1,6 @@
+fastapi
+uvicorn[standard]
+pydantic
+paho-mqtt
+redis
+requests
