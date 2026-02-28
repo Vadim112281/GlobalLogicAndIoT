@@ -1,0 +1,2 @@
+tkintermapview==1.29
+websockets==12.0
