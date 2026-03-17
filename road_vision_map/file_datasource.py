@@ -9,7 +9,6 @@ class FileDatasource:
     def start_reading(self):
         """Відкриває файл для читання."""
         self.file = open(self.filepath, 'r', encoding='utf-8')
-        # Передбачається, що CSV має заголовки, напр.: latitude,longitude,road_state
         self.reader = csv.DictReader(self.file)
 
     def read(self):

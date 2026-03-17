@@ -1,6 +1,18 @@
 name: road_vision_store
 
 services:
+ 
+  mosquitto:
+    image: eclipse-mosquitto:latest
+    container_name: road_vision_mosquitto
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+    
+    command: mosquitto -c /mosquitto-no-auth.conf
+    networks:
+      - store_net
+
   postgres_db:
     image: postgres:16
     container_name: road_vision_postgres

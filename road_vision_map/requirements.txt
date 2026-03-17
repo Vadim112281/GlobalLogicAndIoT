@@ -1,2 +1,3 @@
 tkintermapview==1.29
 websockets==12.0
+paho-mqtt==2.1.0
