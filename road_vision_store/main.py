@@ -8,7 +8,7 @@ from pydantic import BaseModel, field_validator
 from sqlalchemy import (
     create_engine, MetaData, Table, Column,
     Integer, String, Float, DateTime,
-    select, insert, update, delete
+    select, insert, update, delete, text
 )
 
 import config
@@ -30,7 +30,27 @@ processed_agent_data = Table(
     Column("latitude", Float),
     Column("longitude", Float),
     Column("timestamp", DateTime),
+    # Pothole dimensions (cm) + computed repair cost (grn)
+    Column("length", Float),
+    Column("width", Float),
+    Column("depth", Float),
+    Column("cost", Float),
 )
+
+
+def ensure_schema():
+    """
+    Makes the app tolerant to existing DB volumes by adding new columns if needed.
+    This is useful during development when the init SQL has already run once.
+    """
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE processed_agent_data ADD COLUMN IF NOT EXISTS length DOUBLE PRECISION"))
+        conn.execute(text("ALTER TABLE processed_agent_data ADD COLUMN IF NOT EXISTS width DOUBLE PRECISION"))
+        conn.execute(text("ALTER TABLE processed_agent_data ADD COLUMN IF NOT EXISTS depth DOUBLE PRECISION"))
+        conn.execute(text("ALTER TABLE processed_agent_data ADD COLUMN IF NOT EXISTS cost DOUBLE PRECISION"))
+
+
+ensure_schema()
 
 # -------------------------
 # Pydantic models
@@ -43,6 +63,12 @@ class AccelerometerData(BaseModel):
 class GpsData(BaseModel):
     latitude: float
     longitude: float
+
+
+class Dimensions(BaseModel):
+    length: float
+    width: float
+    depth: float
 
 class AgentData(BaseModel):
     accelerometer: AccelerometerData
@@ -62,6 +88,7 @@ class AgentData(BaseModel):
 class ProcessedAgentData(BaseModel):
     road_state: str
     agent_data: AgentData
+    dimensions: Dimensions
 
 class ProcessedAgentDataInDB(BaseModel):
     id: int
@@ -72,6 +99,8 @@ class ProcessedAgentDataInDB(BaseModel):
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     timestamp: Optional[datetime] = None
+    dimensions: Optional[Dimensions] = None
+    cost: Optional[float] = None
 
 # -------------------------
 # App + WebSocket
@@ -113,7 +142,32 @@ def row_to_model(row) -> ProcessedAgentDataInDB:
         latitude=row.latitude,
         longitude=row.longitude,
         timestamp=row.timestamp,
+        dimensions=(
+            Dimensions(
+                length=row.length,
+                width=row.width,
+                depth=row.depth,
+            )
+            if row.length is not None and row.width is not None and row.depth is not None
+            else None
+        ),
+        cost=row.cost,
     )
+
+# -------------------------
+# Pricing logic
+# -------------------------
+def calculate_repair_cost(length: float, width: float, depth: float) -> float:
+    """
+    Economic formula used by MapUI.
+    Cost is calculated in grn.
+    """
+    volume = length * width * depth
+    base_service = 1500.0
+    material_price = 0.8
+    difficulty = 1.5 if depth > 5 else 1.0
+    cost = (base_service + (volume * material_price)) * difficulty
+    return round(cost, 2)
 
 # -------------------------
 # CRUD
@@ -125,6 +179,10 @@ async def create_processed_agent_data(items: List[ProcessedAgentData]):
 
     rows = []
     for it in items:
+        length = it.dimensions.length
+        width = it.dimensions.width
+        depth = it.dimensions.depth
+        cost = calculate_repair_cost(length=length, width=width, depth=depth)
         rows.append({
             "road_state": it.road_state,
             "x": it.agent_data.accelerometer.x,
@@ -133,6 +191,10 @@ async def create_processed_agent_data(items: List[ProcessedAgentData]):
             "latitude": it.agent_data.gps.latitude,
             "longitude": it.agent_data.gps.longitude,
             "timestamp": it.agent_data.timestamp,
+            "length": length,
+            "width": width,
+            "depth": depth,
+            "cost": cost,
         })
 
     with engine.begin() as conn:
@@ -180,6 +242,14 @@ async def update_processed_agent_data(item_id: int, data: ProcessedAgentData):
         "latitude": data.agent_data.gps.latitude,
         "longitude": data.agent_data.gps.longitude,
         "timestamp": data.agent_data.timestamp,
+        "length": data.dimensions.length,
+        "width": data.dimensions.width,
+        "depth": data.dimensions.depth,
+        "cost": calculate_repair_cost(
+            length=data.dimensions.length,
+            width=data.dimensions.width,
+            depth=data.dimensions.depth,
+        ),
     }
 
     with engine.begin() as conn:

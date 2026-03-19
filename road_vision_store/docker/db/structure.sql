@@ -6,5 +6,11 @@ CREATE TABLE IF NOT EXISTS processed_agent_data (
   z DOUBLE PRECISION,
   latitude DOUBLE PRECISION,
   longitude DOUBLE PRECISION,
-  timestamp TIMESTAMP
+  timestamp TIMESTAMP,
+  -- For economic calculations (pothole size in cm)
+  length DOUBLE PRECISION,
+  width DOUBLE PRECISION,
+  depth DOUBLE PRECISION,
+  -- Computed repair cost (grn)
+  cost DOUBLE PRECISION
 );
