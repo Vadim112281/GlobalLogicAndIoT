@@ -1,0 +1,24 @@
+1773944628: mosquitto version 2.1.2 starting
+1773944628: Config loaded from /mosquitto/config/mosquitto.conf.
+1773944628: Bridge support available.
+1773944628: Persistence support available.
+1773944628: TLS support available.
+1773944628: TLS-PSK support available.
+1773944628: Websockets support available.
+1773944628: Opening ipv4 listen socket on port 1883.
+1773944628: Opening ipv6 listen socket on port 1883.
+1773944628: mosquitto version 2.1.2 running
+1773944628: New connection from 172.19.0.3:40715 on port 1883.
+1773944628: New client connected from 172.19.0.3:40715 as auto-B5A3F7CA-10FD-AA82-F66F-CF42CA4569CD (p4, c1, k60).
+1773944629: New connection from 172.19.0.5:39129 on port 1883.
+1773944629: New client connected from 172.19.0.5:39129 as auto-8571B529-ED69-1BA7-C242-43F7A100F5E3 (p4, c1, k60).
+1773944629: New connection from 172.19.0.5:56183 on port 1883.
+1773944629: New client connected from 172.19.0.5:56183 as auto-FE5C0A60-49C7-6216-0C01-B94AF68BC335 (p4, c1, k60).
+1773944629: New connection from 172.19.0.4:40855 on port 1883.
+1773944629: New client connected from 172.19.0.4:40855 as auto-3D33646E-0AF3-C4C9-3488-FBD9E1398317 (p4, c1, k60).
+1773945288: Client auto-B5A3F7CA-10FD-AA82-F66F-CF42CA4569CD [172.19.0.3:40715] disconnected: connection closed by client.
+1773945288: Client auto-FE5C0A60-49C7-6216-0C01-B94AF68BC335 [172.19.0.5:56183] disconnected: connection closed by client.
+1773945288: Client auto-8571B529-ED69-1BA7-C242-43F7A100F5E3 [172.19.0.5:39129] disconnected: connection closed by client.
+1773945289: Client auto-3D33646E-0AF3-C4C9-3488-FBD9E1398317 [172.19.0.4:40855] disconnected: connection closed by client.
+1773945289: mosquitto version 2.1.2 terminating
+1773945289: Saving in-memory database to /mosquitto/data//mosquitto.db.
