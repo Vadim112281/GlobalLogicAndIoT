@@ -1,17 +1,36 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import List, Set, Optional
+from typing import List, Optional, Set
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
-from pydantic import BaseModel, field_validator
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import (
-    create_engine, MetaData, Table, Column,
-    Integer, String, Float, DateTime,
-    select, insert, update, delete
+    Column,
+    DateTime,
+    Float,
+    Integer,
+    MetaData,
+    String,
+    Table,
+    create_engine,
+    delete,
+    insert,
+    select,
+    text,
+    update,
 )
 
 import config
+
+
+def calculate_repair_cost(length: float, width: float, depth: float) -> float:
+    volume = length * width * depth
+    base_service = 1500
+    material_price = 0.8
+    difficulty = 1.5 if depth > 5 else 1.0
+    return round((base_service + (volume * material_price)) * difficulty, 2)
+
 
 # -------------------------
 # DB setup
@@ -24,61 +43,150 @@ processed_agent_data = Table(
     metadata,
     Column("id", Integer, primary_key=True),
     Column("road_state", String, nullable=False),
+    Column("source", String, nullable=False, server_default="sensor"),
     Column("x", Float),
     Column("y", Float),
     Column("z", Float),
     Column("latitude", Float),
     Column("longitude", Float),
     Column("timestamp", DateTime),
+    Column("length", Float),
+    Column("width", Float),
+    Column("depth", Float),
+    Column("repair_cost", Float),
 )
+
+
+def ensure_schema() -> None:
+    statements = [
+        """
+        CREATE TABLE IF NOT EXISTS processed_agent_data (
+            id SERIAL PRIMARY KEY,
+            road_state VARCHAR(255) NOT NULL,
+            source VARCHAR(50) NOT NULL DEFAULT 'sensor',
+            x DOUBLE PRECISION,
+            y DOUBLE PRECISION,
+            z DOUBLE PRECISION,
+            latitude DOUBLE PRECISION,
+            longitude DOUBLE PRECISION,
+            timestamp TIMESTAMP,
+            length DOUBLE PRECISION,
+            width DOUBLE PRECISION,
+            depth DOUBLE PRECISION,
+            repair_cost DOUBLE PRECISION
+        )
+        """,
+        "ALTER TABLE processed_agent_data ADD COLUMN IF NOT EXISTS source VARCHAR(50) NOT NULL DEFAULT 'sensor'",
+        "ALTER TABLE processed_agent_data ADD COLUMN IF NOT EXISTS length DOUBLE PRECISION",
+        "ALTER TABLE processed_agent_data ADD COLUMN IF NOT EXISTS width DOUBLE PRECISION",
+        "ALTER TABLE processed_agent_data ADD COLUMN IF NOT EXISTS depth DOUBLE PRECISION",
+        "ALTER TABLE processed_agent_data ADD COLUMN IF NOT EXISTS repair_cost DOUBLE PRECISION",
+    ]
+    with engine.begin() as conn:
+        for statement in statements:
+            conn.execute(text(statement))
+
+
+ensure_schema()
+metadata.create_all(engine)
+
 
 # -------------------------
 # Pydantic models
 # -------------------------
 class AccelerometerData(BaseModel):
-    x: float
-    y: float
-    z: float
+    x: Optional[float] = None
+    y: Optional[float] = None
+    z: Optional[float] = None
+
 
 class GpsData(BaseModel):
     latitude: float
     longitude: float
 
+
+class DimensionsData(BaseModel):
+    length: float = Field(gt=0)
+    width: float = Field(gt=0)
+    depth: float = Field(gt=0)
+
+
 class AgentData(BaseModel):
-    accelerometer: AccelerometerData
+    accelerometer: Optional[AccelerometerData] = None
     gps: GpsData
     timestamp: datetime
 
     @field_validator("timestamp", mode="before")
     @classmethod
-    def parse_timestamp(cls, v):
-        if isinstance(v, datetime):
-            return v
+    def parse_timestamp(cls, value):
+        if isinstance(value, datetime):
+            return value
         try:
-            return datetime.fromisoformat(v)
-        except Exception:
-            raise ValueError("Invalid timestamp формат. Очікується ISO 8601, напр: 2026-02-22T12:00:00")
+            return datetime.fromisoformat(value)
+        except Exception as exc:
+            raise ValueError(
+                "Invalid timestamp формат. Очікується ISO 8601, напр: 2026-02-22T12:00:00"
+            ) from exc
+
 
 class ProcessedAgentData(BaseModel):
     road_state: str
     agent_data: AgentData
+    source: str = "sensor"
+    dimensions: Optional[DimensionsData] = None
+
 
 class ProcessedAgentDataInDB(BaseModel):
     id: int
     road_state: str
+    source: str = "sensor"
     x: Optional[float] = None
     y: Optional[float] = None
     z: Optional[float] = None
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     timestamp: Optional[datetime] = None
+    length: Optional[float] = None
+    width: Optional[float] = None
+    depth: Optional[float] = None
+    repair_cost: Optional[float] = None
+
+
+def payload_to_row(item: ProcessedAgentData) -> dict:
+    accelerometer = item.agent_data.accelerometer or AccelerometerData()
+    dimensions = item.dimensions
+    repair_cost = None
+
+    if dimensions is not None:
+        repair_cost = calculate_repair_cost(
+            dimensions.length,
+            dimensions.width,
+            dimensions.depth,
+        )
+
+    return {
+        "road_state": item.road_state,
+        "source": item.source,
+        "x": accelerometer.x,
+        "y": accelerometer.y,
+        "z": accelerometer.z,
+        "latitude": item.agent_data.gps.latitude,
+        "longitude": item.agent_data.gps.longitude,
+        "timestamp": item.agent_data.timestamp,
+        "length": dimensions.length if dimensions else None,
+        "width": dimensions.width if dimensions else None,
+        "depth": dimensions.depth if dimensions else None,
+        "repair_cost": repair_cost,
+    }
+
 
 # -------------------------
 # App + WebSocket
 # -------------------------
-app = FastAPI(title="Road Vision Store API", version="1.0.0")
+app = FastAPI(title="Road Vision Store API", version="1.1.0")
 
 subscribers: Set[WebSocket] = set()
+
 
 @app.websocket("/ws/")
 async def ws_endpoint(ws: WebSocket):
@@ -86,12 +194,12 @@ async def ws_endpoint(ws: WebSocket):
     subscribers.add(ws)
     try:
         while True:
-            # клієнт може слати ping/текст, щоб тримати канал живим
             await ws.receive_text()
     except WebSocketDisconnect:
         subscribers.discard(ws)
     except Exception:
         subscribers.discard(ws)
+
 
 async def ws_broadcast(payload: dict):
     dead = []
@@ -103,17 +211,24 @@ async def ws_broadcast(payload: dict):
     for ws in dead:
         subscribers.discard(ws)
 
+
 def row_to_model(row) -> ProcessedAgentDataInDB:
     return ProcessedAgentDataInDB(
         id=row.id,
         road_state=row.road_state,
+        source=row.source or "sensor",
         x=row.x,
         y=row.y,
         z=row.z,
         latitude=row.latitude,
         longitude=row.longitude,
         timestamp=row.timestamp,
+        length=row.length,
+        width=row.width,
+        depth=row.depth,
+        repair_cost=row.repair_cost,
     )
+
 
 # -------------------------
 # CRUD
@@ -123,32 +238,25 @@ async def create_processed_agent_data(items: List[ProcessedAgentData]):
     if not items:
         return []
 
-    rows = []
-    for it in items:
-        rows.append({
-            "road_state": it.road_state,
-            "x": it.agent_data.accelerometer.x,
-            "y": it.agent_data.accelerometer.y,
-            "z": it.agent_data.accelerometer.z,
-            "latitude": it.agent_data.gps.latitude,
-            "longitude": it.agent_data.gps.longitude,
-            "timestamp": it.agent_data.timestamp,
-        })
+    rows = [payload_to_row(item) for item in items]
 
     with engine.begin() as conn:
         created_rows = conn.execute(
             insert(processed_agent_data).returning(processed_agent_data),
-            rows
+            rows,
         ).fetchall()
 
-    created = [row_to_model(r) for r in created_rows]
+    created = [row_to_model(row) for row in created_rows]
 
-    await ws_broadcast({
-        "type": "created",
-        "items": [c.model_dump(mode="json") for c in created],
-    })
+    await ws_broadcast(
+        {
+            "type": "created",
+            "items": [item.model_dump(mode="json") for item in created],
+        }
+    )
 
     return created
+
 
 @app.get("/processed_agent_data/", response_model=list[ProcessedAgentDataInDB])
 def list_processed_agent_data():
@@ -156,7 +264,8 @@ def list_processed_agent_data():
         rows = conn.execute(
             select(processed_agent_data).order_by(processed_agent_data.c.id)
         ).fetchall()
-    return [row_to_model(r) for r in rows]
+    return [row_to_model(row) for row in rows]
+
 
 @app.get("/processed_agent_data/{item_id}", response_model=ProcessedAgentDataInDB)
 def read_processed_agent_data(item_id: int):
@@ -170,17 +279,10 @@ def read_processed_agent_data(item_id: int):
 
     return row_to_model(row)
 
+
 @app.put("/processed_agent_data/{item_id}", response_model=ProcessedAgentDataInDB)
 async def update_processed_agent_data(item_id: int, data: ProcessedAgentData):
-    values = {
-        "road_state": data.road_state,
-        "x": data.agent_data.accelerometer.x,
-        "y": data.agent_data.accelerometer.y,
-        "z": data.agent_data.accelerometer.z,
-        "latitude": data.agent_data.gps.latitude,
-        "longitude": data.agent_data.gps.longitude,
-        "timestamp": data.agent_data.timestamp,
-    }
+    values = payload_to_row(data)
 
     with engine.begin() as conn:
         row = conn.execute(
@@ -195,12 +297,15 @@ async def update_processed_agent_data(item_id: int, data: ProcessedAgentData):
 
     model = row_to_model(row)
 
-    await ws_broadcast({
-        "type": "updated",
-        "item": model.model_dump(mode="json"),
-    })
+    await ws_broadcast(
+        {
+            "type": "updated",
+            "item": model.model_dump(mode="json"),
+        }
+    )
 
     return model
+
 
 @app.delete("/processed_agent_data/{item_id}", response_model=ProcessedAgentDataInDB)
 async def delete_processed_agent_data(item_id: int):
@@ -216,9 +321,11 @@ async def delete_processed_agent_data(item_id: int):
 
     model = row_to_model(row)
 
-    await ws_broadcast({
-        "type": "deleted",
-        "id": model.id,
-    })
+    await ws_broadcast(
+        {
+            "type": "deleted",
+            "id": model.id,
+        }
+    )
 
     return model

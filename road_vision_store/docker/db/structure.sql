@@ -1,10 +1,15 @@
 CREATE TABLE IF NOT EXISTS processed_agent_data (
   id SERIAL PRIMARY KEY,
   road_state VARCHAR(255) NOT NULL,
+  source VARCHAR(50) NOT NULL DEFAULT 'sensor',
   x DOUBLE PRECISION,
   y DOUBLE PRECISION,
   z DOUBLE PRECISION,
   latitude DOUBLE PRECISION,
   longitude DOUBLE PRECISION,
-  timestamp TIMESTAMP
+  timestamp TIMESTAMP,
+  length DOUBLE PRECISION,
+  width DOUBLE PRECISION,
+  depth DOUBLE PRECISION,
+  repair_cost DOUBLE PRECISION
 );
